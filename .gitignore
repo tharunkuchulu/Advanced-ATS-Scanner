@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.*
+*.sqlite3
+
+# VS Code
+.vscode/
+
+# Node.js (if frontend uses Node)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python virtual environments
+venv/
+env/
+.venv/
+.env/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# OneDrive sync files
+*.tmp
+~$*
+
+# Logs
+*.log
+
+# Misc
+*.bak
+*.swp
