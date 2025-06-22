@@ -7,6 +7,9 @@ from datetime import datetime
 from typing import Dict
 from bson import ObjectId
 from app.db.database import db
+from fastapi.responses import StreamingResponse
+from app.utils.pdf_generator import generate_pdf
+from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
@@ -82,3 +85,67 @@ async def get_analysis_results(resume_id: str = Query(...), current_user: dict =
     except Exception as e:
         print(f"Debug: Error in get_analysis_results: {type(e).__name__} - {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve results: {str(e)}")
+    
+@router.get("/resume_history/")
+async def resume_history(current_user: dict = Depends(get_current_user)):
+    try:
+        cursor = db.resumes.find({"user_email": current_user["sub"]})
+        resumes = []
+        async for doc in cursor:
+            resumes.append({
+                "resume_id": str(doc["_id"]),
+                "filename": doc["filename"],
+                "uploaded_at": doc["uploaded_at"]
+            })
+        return {"resumes": resumes}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch history: {str(e)}")
+    
+@router.get("/resume_versions/")
+async def get_resume_versions(filename: str, current_user: dict = Depends(get_current_user)):
+    try:
+        docs = db.resumes.find({
+            "user_email": current_user["sub"],
+            "filename": filename
+        }).sort("uploaded_at", -1)
+
+        resumes = []
+        async for doc in docs:
+            resumes.append({
+                "resume_id": str(doc["_id"]),
+                "filename": doc["filename"],
+                "version": doc.get("version", "v1"),
+                "uploaded_at": doc["uploaded_at"].isoformat()
+            })
+
+        return {"versions": resumes}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching resume versions: {str(e)}")
+
+
+
+@router.get("/export_pdf/")
+async def export_analysis_pdf(resume_id: str, current_user: dict = Depends(get_current_user)):
+    try:
+        # Get analysis and resume
+        resume = await db.resumes.find_one({
+            "_id": ObjectId(resume_id),
+            "user_email": current_user["sub"]
+        })
+
+        analysis = await db.analysis.find_one({
+            "resume_id": resume_id,
+            "user_id": current_user["sub"]
+        })
+
+        if not resume or not analysis:
+            raise HTTPException(status_code=404, detail="Resume or analysis not found")
+
+        # Generate PDF
+        pdf_stream = generate_pdf(analysis, resume["filename"])
+        return StreamingResponse(pdf_stream, media_type="application/pdf", headers={
+            "Content-Disposition": f"attachment; filename=analysis_{resume_id}.pdf"
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to export PDF: {str(e)}")
