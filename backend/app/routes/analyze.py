@@ -11,6 +11,11 @@ from fastapi.responses import StreamingResponse
 from app.utils.pdf_generator import generate_pdf
 from app.services.jd_matcher import match_resume_with_jd
 from pydantic import BaseModel
+import csv
+from io import StringIO
+from typing import Optional
+from app.models.analyze_model import ResumeHistoryResponse
+from app.models.analyze_model import ResumeHistoryItem
 
 router = APIRouter()
 
@@ -191,3 +196,93 @@ async def match_resume_by_text(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Matching failed: {str(e)}")
+
+@router.get("/export_csv/")
+async def export_all_resume_data_csv(current_user: dict = Depends(get_current_user)):
+    try:
+        # Fetch resumes by user
+        resumes_cursor = db.resumes.find({"user_email": current_user["sub"]})
+        analyses_cursor = db.analysis.find({"user_id": current_user["sub"]})
+
+        # Create dictionaries to map resume_id -> resume
+        resumes_map = {}
+        async for resume in resumes_cursor:
+            resumes_map[str(resume["_id"])] = resume
+
+        # Prepare CSV
+        csv_output = StringIO()
+        writer = csv.writer(csv_output)
+        writer.writerow([
+            "Resume Filename", "Version", "Uploaded At", 
+            "Skills", "Summary", "Suggestions", "Job Fit Score"
+        ])
+
+        async for analysis in analyses_cursor:
+            resume_id = analysis.get("resume_id")
+            resume = resumes_map.get(resume_id)
+            if resume:
+                writer.writerow([
+                    resume.get("filename", "N/A"),
+                    resume.get("version", "v1"),
+                    resume.get("uploaded_at", "").isoformat(),
+                    ", ".join(analysis.get("skills", [])),
+                    analysis.get("summary", ""),
+                    " | ".join(analysis.get("suggestions", [])),
+                    analysis.get("job_fit_score", "")
+                ])
+
+        csv_output.seek(0)
+        return StreamingResponse(
+            iter([csv_output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=resume_data.csv"}
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to export CSV: {str(e)}")
+    
+@router.get("/resume_history/", response_model=ResumeHistoryResponse)
+async def resume_history(
+    filename: Optional[str] = Query(None),
+    from_date: Optional[str] = Query(None),
+    min_score: Optional[int] = Query(None),
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        filters = {"user_email": current_user["sub"]}
+        
+        if filename:
+            filters["filename"] = filename
+
+        if from_date:
+            from datetime import datetime
+            filters["uploaded_at"] = {"$gte": datetime.fromisoformat(from_date)}
+
+        resume_cursor = db.resumes.find(filters)
+        resumes = []
+
+        async for resume in resume_cursor:
+            resume_id = str(resume["_id"])
+            uploaded_at = resume["uploaded_at"].isoformat()
+
+            analysis = await db.analysis.find_one({
+                "resume_id": resume_id,
+                "user_id": current_user["sub"]
+            })
+
+            job_fit_score = analysis.get("job_fit_score") if analysis else None
+
+            if min_score is not None and (job_fit_score is None or job_fit_score < min_score):
+                continue
+
+            resumes.append({
+                "resume_id": resume_id,
+                "filename": resume["filename"],
+                "uploaded_at": uploaded_at,
+                "job_fit_score": job_fit_score
+            })
+
+        return {"resumes": resumes}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch filtered history: {str(e)}")
