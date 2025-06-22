@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes import upload, analyze, auth, resume_history, match
 from app.routes import analytics
 from app.routes import upload_jd
-
+from app.routes import jd_scraper
 
 app = FastAPI(
     title="AI Resume Analyzer",
@@ -28,6 +28,7 @@ app.include_router(resume_history.router)
 app.include_router(match.router)
 app.include_router(analytics.router)
 app.include_router(upload_jd.router)
+app.include_router(jd_scraper.router)
 
 
 
