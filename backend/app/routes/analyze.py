@@ -275,12 +275,13 @@ async def resume_history(
             if min_score is not None and (job_fit_score is None or job_fit_score < min_score):
                 continue
 
-            resumes.append({
-                "resume_id": resume_id,
-                "filename": resume["filename"],
-                "uploaded_at": uploaded_at,
-                "job_fit_score": job_fit_score
-            })
+            resumes.append(ResumeHistoryItem(
+                resume_id=resume_id,
+                filename=resume["filename"],
+                uploaded_at=uploaded_at,
+                job_fit_score=job_fit_score
+            ))
+
 
         return {"resumes": resumes}
 
