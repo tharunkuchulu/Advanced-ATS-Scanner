@@ -1,12 +1,39 @@
 from typing import Dict
 from openai import AsyncOpenAI
 import os
+import httpx
 import json
 
 client = AsyncOpenAI(
     api_key=os.getenv("OPENROUTER_API_KEY"),
     base_url="https://openrouter.ai/api/v1"
 )
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")
+
+async def call_openrouter_for_json(prompt: str) -> str:
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    body = {
+        "model": OPENROUTER_MODEL,
+        "messages": [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": prompt}
+        ]
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=body)
+
+    if response.status_code != 200:
+        raise Exception(f"OpenRouter error: {response.text}")
+
+    result = response.json()
+    return result["choices"][0]["message"]["content"]
 
 async def match_resume_to_jd(resume_text: str, jd_text: str) -> Dict:
     resume_text = resume_text[:50000]

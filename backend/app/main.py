@@ -5,6 +5,7 @@ from app.routes import analytics
 from app.routes import upload_jd
 from app.routes import dashboard, recruit
 from app.routes import jd_scraper
+from app.routes import insights
 
 app = FastAPI(
     title="AI Resume Analyzer",
@@ -32,6 +33,8 @@ app.include_router(upload_jd.router)
 app.include_router(jd_scraper.router)
 app.include_router(dashboard.router)
 app.include_router(recruit.router)
+app.include_router(insights.router, tags=["Insights"])
+
 
 
 @app.get("/")
