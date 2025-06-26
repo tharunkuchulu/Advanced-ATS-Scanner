@@ -1,9 +1,7 @@
-# app/routes/insights.py
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from app.utils.llm_openrouter import call_openrouter_model
+from app.utils.llm_utils import suggest_resume_improvements
 
 router = APIRouter()
 
@@ -14,37 +12,18 @@ class SuggestImprovementRequest(BaseModel):
 @router.post("/suggest-improvements")
 async def suggest_improvements(payload: SuggestImprovementRequest):
     resume_text = payload.resume_text.strip()
-    job_description = payload.job_description.strip() if payload.job_description else None
-
+    job_description = payload.job_description.strip() if payload.job_description else ""
     if not resume_text:
         raise HTTPException(status_code=400, detail="Resume text is required.")
 
-    prompt = f"""
-You are an expert career advisor and technical recruiter.
-
-Analyze the following resume:
---- Resume Start ---
-{resume_text}
---- Resume End ---
-
-{"Also consider the following job description:\n" + job_description if job_description else ""}
-
-Provide a JSON with:
-1. "matching_skills"
-2. "missing_skills"
-3. "tools_to_learn"
-4. "resources_to_explore"
-5. "strengths"
-6. "weaknesses"
-7. "fit_summary"
-"""
-
     try:
-        raw_response = await call_openrouter_model(prompt)
+        result = await suggest_resume_improvements(resume_text, job_description)
+        if not result:
+            raise HTTPException(status_code=500, detail="LLM failed to return valid suggestions.")
         return {
             "status": True,
             "message": "Improvement suggestions generated.",
-            "suggestions": raw_response
+            "suggestions": result
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
