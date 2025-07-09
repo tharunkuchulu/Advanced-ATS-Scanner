@@ -13,11 +13,11 @@ async def suggest_improvements(data: SuggestImprovementRequest):
     try:
         result = await suggest_resume_improvements(data.resume_text, data.job_description)
         if not result:
-            raise HTTPException(status_code=500, detail="LLM failed to return valid suggestions.")
+            raise HTTPException(status_code=500, detail="AI failed to return valid suggestions.")
         return {
             "status": True,
             "message": "Improvement suggestions generated.",
-            "suggestions": result
+            "suggestions": result.dict()
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OpenRouter error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")

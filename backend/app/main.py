@@ -10,6 +10,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from fastapi import Request
 from slowapi.errors import RateLimitExceeded
+from app.routes import auth_routes
+
 
 app = FastAPI(
     title="AI Resume Analyzer",
@@ -28,7 +30,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(upload.router)
-app.include_router(auth.router)
+app.include_router(auth.router)  # ✅ ADD THIS LINE if not already present!
 app.include_router(resume_history.router)
 app.include_router(match.router)
 app.include_router(analytics.router)
@@ -38,6 +40,7 @@ app.include_router(dashboard.router)
 app.include_router(recruit.router)
 app.include_router(insights.router, tags=["Insights"])
 app.include_router(improvements.router)
+app.include_router(auth_routes.router)
 
 
 limiter = Limiter(key_func=get_remote_address)

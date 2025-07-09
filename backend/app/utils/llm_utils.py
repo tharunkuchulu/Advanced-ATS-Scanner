@@ -1,13 +1,13 @@
-# app/utils/llm_utils.py
-
 import os
 import json
 import httpx
 import re
-from typing import Dict, Any, Optional
+from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 import asyncio
+from pydantic import BaseModel, ValidationError
 
+# --- Load environment variables ---
 load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")
@@ -19,7 +19,32 @@ HEADERS = {
     "HTTP-Referer": "https://yourdomain.com"  # customize!
 }
 
-# --- Prompt templates (DRY) ---
+# --- Pydantic schemas for LLM output validation ---
+
+class ResumeAnalysisResult(BaseModel):
+    skills: List[str]
+    summary: str
+    suggestions: List[str]
+    job_fit_score: int
+
+class JDMatchResult(BaseModel):
+    fit_percentage: int
+    matching_skills: List[str]
+    missing_skills: List[str]
+    strengths: Optional[List[str]] = []
+    weaknesses: Optional[List[str]] = []
+    verdict: str
+
+class ResumeImprovementResult(BaseModel):
+    matching_skills: List[str]
+    missing_skills: List[str]
+    tools_to_learn: List[str]
+    resources_to_explore: List[str]
+    strengths: List[str]
+    weaknesses: List[str]
+    fit_summary: Dict[str, Any]  # technical_fit, upside, recommendation, alternative_roles
+
+# --- Prompt templates ---
 PROMPT_TEMPLATES = {
     "resume_analysis": lambda resume_text: f"""
 You are a professional technical recruiter AI. Your response *must be* a valid JSON object with no additional text before or after it. Use the following structure exactly:
@@ -35,7 +60,6 @@ Resume:
 {resume_text}
 """,
 
-    # --- UPDATED: Always ask for strengths and weaknesses for JD matching! ---
     "jd_matching": lambda resume_text, job_description: f"""
 You are an expert recruiter AI. Compare the following resume with the job description and return a JSON with:
 {{
@@ -90,7 +114,7 @@ async def call_llm(
     system_prompt: str = "You are a helpful AI assistant. Respond only with a valid JSON.",
     retries: int = 3,
     timeout: int = 60
-) -> Optional[Dict[str, Any]]:
+) -> Optional[str]:
     body = {
         "model": OPENROUTER_MODEL,
         "messages": [
@@ -112,33 +136,54 @@ async def call_llm(
                 raw = result["choices"][0]["message"]["content"].strip()
                 # Remove code fences if present
                 cleaned = re.sub(r"^```json\s*|\s*```$", "", raw, flags=re.MULTILINE)
-                return json.loads(cleaned)
+                return cleaned
         except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
             if attempt < retries - 1:
                 await asyncio.sleep(2 ** attempt)  # Exponential backoff
             else:
                 print(f"❌ LLM call failed after {retries} attempts: {e}")
                 return None
-        except json.JSONDecodeError as e:
-            print(f"❌ LLM returned invalid JSON: {e}, raw: {raw}")
-            return None
         except Exception as e:
             print(f"❌ Unexpected error: {type(e).__name__} - {str(e)}")
             return None
 
-# --- Example usage in your endpoints: ---
+# --- Wrapped functions with validation ---
 
-# Resume analysis
-async def analyze_resume_text(resume_text: str):
+async def analyze_resume_text(resume_text: str) -> Optional[ResumeAnalysisResult]:
     prompt = PROMPT_TEMPLATES["resume_analysis"](resume_text)
-    return await call_llm(prompt, system_prompt="You are an expert recruiter AI. Respond only with a valid JSON object matching the exact structure provided.")
+    response = await call_llm(prompt, system_prompt="You are an expert recruiter AI. Respond only with a valid JSON object matching the exact structure provided.")
+    if not response:
+        return None
+    try:
+        data = json.loads(response)
+        validated = ResumeAnalysisResult(**data)
+        return validated
+    except (json.JSONDecodeError, ValidationError) as e:
+        print("❌ ResumeAnalysisResult validation error:", e)
+        return None
 
-# JD matching (includes strengths/weaknesses)
-async def match_resume_with_jd(resume_text: str, jd_text: str):
+async def match_resume_with_jd(resume_text: str, jd_text: str) -> Optional[JDMatchResult]:
     prompt = PROMPT_TEMPLATES["jd_matching"](resume_text, jd_text)
-    return await call_llm(prompt, system_prompt="You are a smart recruiter assistant. Always reply in pure JSON format.")
+    response = await call_llm(prompt, system_prompt="You are a smart recruiter assistant. Always reply in pure JSON format.")
+    if not response:
+        return None
+    try:
+        data = json.loads(response)
+        validated = JDMatchResult(**data)
+        return validated
+    except (json.JSONDecodeError, ValidationError) as e:
+        print("❌ JDMatchResult validation error:", e)
+        return None
 
-# Resume improvement suggestions
-async def suggest_resume_improvements(resume_text: str, jd_text: str):
+async def suggest_resume_improvements(resume_text: str, jd_text: str) -> Optional[ResumeImprovementResult]:
     prompt = PROMPT_TEMPLATES["resume_improvement"](resume_text, jd_text)
-    return await call_llm(prompt, system_prompt="You are an expert career coach. Respond only with a valid JSON structure.")
+    response = await call_llm(prompt, system_prompt="You are an expert career coach. Respond only with a valid JSON structure.")
+    if not response:
+        return None
+    try:
+        data = json.loads(response)
+        validated = ResumeImprovementResult(**data)
+        return validated
+    except (json.JSONDecodeError, ValidationError) as e:
+        print("❌ ResumeImprovementResult validation error:", e)
+        return None

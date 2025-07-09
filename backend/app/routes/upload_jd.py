@@ -1,12 +1,9 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from datetime import datetime
 from typing import Optional
-from app.services.resume_parser import extract_text_from_pdf
+from app.utils.resume_parser import parse_resume
 from app.auth.auth_handler import get_current_user
 from app.db.database import db
-from fastapi import Query
-from bson import ObjectId
-
 
 router = APIRouter(
     prefix="/upload_jd",
@@ -15,16 +12,17 @@ router = APIRouter(
 
 @router.post("/")
 async def upload_jd(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
-    if not (file.filename.endswith(".pdf") or file.filename.endswith(".txt")):
+    # Validate file type and size
+    if file.content_type not in ["application/pdf", "text/plain"]:
         raise HTTPException(status_code=400, detail="Only PDF or TXT files are allowed.")
-
     content = await file.read()
-    
-    if file.filename.endswith(".pdf"):
-        jd_text = extract_text_from_pdf(content)
-    else:
-        jd_text = content.decode("utf-8")
-    
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 5MB).")
+
+    # Use the unified parser for both PDF and TXT for consistency
+    parsed = parse_resume(content, file.filename)
+    jd_text = parsed.get("parsed_text", "")
+
     if not jd_text:
         raise HTTPException(status_code=400, detail="Failed to extract JD content.")
 

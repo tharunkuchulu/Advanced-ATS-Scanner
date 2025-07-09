@@ -2,7 +2,7 @@
 
 import fitz  # PyMuPDF
 
-def parse_resume(file_bytes: bytes):
+def parse_resume(file_bytes: bytes, filename: str = ""):
     try:
         doc = fitz.open(stream=file_bytes, filetype="pdf")
         text = ""

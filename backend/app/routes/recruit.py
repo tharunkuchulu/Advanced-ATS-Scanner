@@ -15,37 +15,39 @@ async def bulk_match(
     jd_text: str = Form(...),
     resumes: List[UploadFile] = File(...)
 ):
+    # ✅ Enforce 50-file upload limit
+    if len(resumes) > 50:
+        raise HTTPException(status_code=400, detail="You can upload a maximum of 50 resumes at once.")
+
     results = []
 
     for resume in resumes:
         try:
             content = await resume.read()
-            parsed = parse_resume(content)
-            resume_text = parsed.get("parsed_text", "")
 
+            # ✅ File type & size validation
+            if resume.content_type not in ["application/pdf", "text/plain"]:
+                raise HTTPException(status_code=400, detail=f"File {resume.filename} is not PDF/TXT.")
+            if len(content) > 5 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail=f"File {resume.filename} too large (max 5MB).")
+
+            parsed = parse_resume(content, resume.filename)
+            resume_text = parsed.get("parsed_text", "")
             if not resume_text.strip():
                 raise ValueError("Empty or invalid resume content")
 
-            # Get AI match result (should return keys: fit_percentage, matching_skills, missing_skills, strengths, weaknesses, verdict)
+            # ✅ AI match
             match_result = await match_resume_with_jd(resume_text, jd_text)
-
-            # Safely handle missing keys in LLM output
-            fit_percentage = match_result.get("fit_percentage", 0)
-            matching_skills = match_result.get("matching_skills", [])
-            missing_skills = match_result.get("missing_skills", [])
-            strengths = match_result.get("strengths", [])
-            weaknesses = match_result.get("weaknesses", [])
-            verdict = match_result.get("verdict", "")
 
             record = {
                 "resume_name": resume.filename,
                 "jd_text": jd_text,
-                "fit_percentage": fit_percentage,
-                "matching_skills": matching_skills,
-                "missing_skills": missing_skills,
-                "strengths": strengths,
-                "weaknesses": weaknesses,
-                "verdict": verdict,
+                "fit_percentage": match_result.get("fit_percentage", 0),
+                "matching_skills": match_result.get("matching_skills", []),
+                "missing_skills": match_result.get("missing_skills", []),
+                "strengths": match_result.get("strengths", []),
+                "weaknesses": match_result.get("weaknesses", []),
+                "verdict": match_result.get("verdict", ""),
                 "parsed_resume": parsed,
                 "created_at": datetime.utcnow()
             }
@@ -54,12 +56,12 @@ async def bulk_match(
 
             results.append({
                 "resume_name": record["resume_name"],
-                "fit_percentage": fit_percentage,
-                "matching_skills": matching_skills,
-                "missing_skills": missing_skills,
-                "strengths": strengths,
-                "weaknesses": weaknesses,
-                "verdict": verdict
+                "fit_percentage": record["fit_percentage"],
+                "matching_skills": record["matching_skills"],
+                "missing_skills": record["missing_skills"],
+                "strengths": record["strengths"],
+                "weaknesses": record["weaknesses"],
+                "verdict": record["verdict"]
             })
 
         except Exception as e:
@@ -70,6 +72,7 @@ async def bulk_match(
         "message": "Batch analysis completed",
         "matches": results
     }
+
 
 @router.get("/recruit/filter-matches")
 async def filter_matches(
