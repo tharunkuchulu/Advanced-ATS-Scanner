@@ -83,3 +83,31 @@ SkillSync AI is an AI-powered resume analysis platform that leverages LLMs and (
   - Resume suggestions
   - JD-resume fit analysis
   - Context-aware RAG prompts
+
+
+## ⬇️Flow Diagram
+
+[Login/Register]
+     |
+     v
+[JWT Auth Token Issued]
+     |
+     v
+[Resume Upload] --> [Parse PDF] --> [MongoDB Store (versioned)] --> [Optional: Embed → ChromaDB Store]
+     |
+     v
+[Job Description Input (Paste/LinkedIn Scrape)] --> [Store in MongoDB] --> [Optional: Embed → ChromaDB Search]
+     |
+     v
+[GPT Match Analysis]
+   └─> Basic Prompt (No RAG)
+   └─> Enhanced Prompt with ChromaDB retrieved resumes (RAG)
+     |
+     v
+[AI Output: Match Score, Skills, Suggestions]
+     |
+     v
+[Dashboard: Filter | Analyze | Download]
+     |
+     v
+[PDF/CSV Export | View Resume History]
